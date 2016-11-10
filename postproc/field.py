@@ -1,39 +1,115 @@
 from __future__ import division
 from math import *
+import os
 import re
 import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 import numpy as np
 from scipy.integrate import simps
+from auxtools import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue
 
-class Field:
+class Space(NamedAttributesContainer):
+    def __init__(self, coords):
+        #self.coords = list(coords)
+        NamedAttributesContainer.__init__(self, coords, [])
+
+    def dim(self):
+        return len(self.elements)
+
+    #def set_internal_coordinate_names(self, coords_names):
+    #    if len(coords_names) != len(self.coords):
+    #        raise DimensionsDoNotMatch('Number of coordinate names and dimension do not match')
+    #    self._coords_names = coords_names
+    #    for i in range(len(self.coords)):
+    #        setattr(self, coords_names[i], self.coords[i])
+
+    def set_xyz_naming(self):
+        if self.dim() != 3:
+            raise DimensionsDoNotMatch('XYZ naming is possible only for 3-dimensional space')
+
+        self.set_elements_names(['x', 'y', 'z'])
+
+    def make_subspace(self, indexes):
+        subsontainer = self.make_subcontainer(indexes)
+        subspace = Space(subsontainer.elements)
+        subspace.set_elements_names(subsontainer.elements_names)
+        return subspace
+
+#class Field(object):
+#    '''
+#    Base class for field representation
+#    '''
+#    def __init__(self, u, v, w, x, y, z):
+#        self.u = u
+#        self.v = v
+#        self.w = w
+#        self.x = x
+#        self.y = y
+#        self.z = z
+#
+#    def L2_norms(self, normalize):
+#        L2_norm_u = 0.
+#        L2_norm_v = 0.
+#        L2_norm_w = 0.
+#
+#        V = 1
+#        if normalize:
+#            V = abs(self.x[0] - self.x[len(self.x)-1]) * abs(self.y[0] - self.y[len(self.y)-1]) * abs(self.z[0] - self.z[len(self.z)-1])
+#            #V = 4*np.pi * 2 * 2*np.pi
+#        L2_norm_u = np.sqrt(-integrate_field(np.power(self.u, 2), self.x, self.y, self.z) / V)
+#        L2_norm_v = np.sqrt(-integrate_field(np.power(self.v, 2), self.x, self.y, self.z) / V)
+#        L2_norm_w = np.sqrt(-integrate_field(np.power(self.w, 2), self.x, self.y, self.z) / V)
+#
+#        return (L2_norm_u, L2_norm_v, L2_norm_w)
+
+class Field(NamedAttributesContainer):
     '''
     Base class for field representation
     '''
-    def __init__(self, u, v, w, x, y, z):
-        self.u = u
-        self.v = v
-        self.w = w
-        self.x = x
-        self.y = y
-        self.z = z
+    def __init__(self, elements, space):
+        self.elements = elements
+        self.space = space
+
+    def set_uvw_naming(self):
+        if len(self.elements) != 3:
+            raise DimensionsDoNotMatch('UVW naming is possible only for a vector field with 3 elements')
+
+        self.set_elements_names(['u', 'v', 'w'])
+
+    def make_subfield(self, elems):
+        indexes = self.convert_names_to_indexes_if_necessary(elems)
+        subcontainer = self.make_subcontainer(indexes)
+        subfield = Field(subcontainer.elements, self.space)
+        subfield.set_elements_names(subcontainer.elements_names)
+        return subfield
+
+    def average(self, elems, along):
+        indexes = self.convert_names_to_indexes_if_necessary(elems)
+        coord_index = self.space.convert_names_to_indexes_if_necessary([along])[0]
+        averaged_subfield = self.make_subfield(elems)
+        averaged_raw_fields = []
+        for raw_field in averaged_subfield.elements:
+            averaged_raw_fields.append(np.mean(raw_field, coord_index))
+
+        averaged_subfield.elements = averaged_raw_fields
+        all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(averaged_subfield.space.elements))
+        averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
+        return averaged_subfield
 
     def L2_norms(self, normalize):
-        L2_norm_u = 0.
-        L2_norm_v = 0.
-        L2_norm_w = 0.
-
         V = 1
         if normalize:
-            V = abs(self.x[0] - self.x[len(self.x)-1]) * abs(self.y[0] - self.y[len(self.y)-1]) * abs(self.z[0] - self.z[len(self.z)-1])
-            #V = 4*np.pi * 2 * 2*np.pi
-        L2_norm_u = np.sqrt(-integrate_field(np.power(self.u, 2), self.x, self.y, self.z) / V)
-        L2_norm_v = np.sqrt(-integrate_field(np.power(self.v, 2), self.x, self.y, self.z) / V)
-        L2_norm_w = np.sqrt(-integrate_field(np.power(self.w, 2), self.x, self.y, self.z) / V)
+            for i in range(len(self.space.elements)):
+                coord = self.space.elements[i]
+                V *= abs(coord[0] - coord[len(coord)-1])
 
-        return (L2_norm_u, L2_norm_v, L2_norm_w)
+        L2_norms = []
+        for i in range(len(self.elements)):
+            val = np.sqrt(-integrate_field(np.power(self.u, 2), self.space.x, self.space.y, self.space.z) / V)            
+            L2_norms.append(LabeledValue(val, '||' + self.elements_names[i] + '||'))
 
+        return L2_norms
 
 def integrate_field(field, x, y, z):
     Nx = x.shape[0]
@@ -62,7 +138,11 @@ def read_field(filename):
     y_numpy = y_dataset[:]
     z_numpy = z_dataset[:]
     
-    return Field(u_numpy, v_numpy, w_numpy, x_numpy, y_numpy, z_numpy)
+    space = Space([x_numpy, y_numpy, z_numpy])
+    space.set_xyz_naming()
+    field = Field([u_numpy, v_numpy, w_numpy], space)
+    field.set_uvw_naming()
+    return field
 
 def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None):
     files_list = os.listdir(path)
@@ -73,7 +153,7 @@ def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None
     checker = range(start_time, end_time + 1)
     max_time_found = 0
     for file_ in files_list:
-        match = re.match('^' + file_prefix + '?P<time>([0-9]+)$' + file_postfix, file_)
+        match = re.match(file_prefix + '(?P<time>[0-9]+)' + file_postfix, file_)
         if match is not None:
             time = int(match.group('time'))
             if time >= start_time and time <= end_time:
@@ -92,17 +172,6 @@ def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None
         fields.append(read_field(path + '/' + file_prefix + str(t) + file_postfix))
     
     return fields
-
-def average_along(scalar_field, coord):
-    axis = 0
-    if coord is 'x':
-        axis = 0
-    elif coord is 'y':
-        axis = 1
-    elif coord is 'z':
-        axis = 2
-
-    return np.mean(scalar_field, axis)
 
 class BadFilesOrder(Exception):
     pass
