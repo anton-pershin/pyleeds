@@ -50,7 +50,7 @@ namespace thequicklight {
             std::string descr;
         };
 
-        /// Data corresponding to one line of "param=value//descr"
+        /// Data corresponding to one line of "param=value # descr"
         /// \todo dublicate the information in map. Must rewrite on Boost.MultiIndex
         struct ParamLine {
             ParamLine(const std::string& paramName, const ParamContent& paramContent)
@@ -159,14 +159,14 @@ namespace thequicklight {
         bool sectionExists(const std::string& section) const;
 
         /*!
-        Returns a comment to parameter. For example, "comment" for a line "param = value // comment"
+        Returns a comment to parameter. For example, "comment" for a line "param = value # comment"
         */
         std::string getParamDescription(const std::string& section,
                                         const std::string& paramName,
                                         ErrorCode* error) const;
 
         /*!
-        Returns a comment to section. For example, "comment" for a line "[section] // comment"
+        Returns a comment to section. For example, "comment" for a line "[section] # comment"
         */
         std::string getSectionDescription(const std::string& section, ErrorCode* error) const;
 

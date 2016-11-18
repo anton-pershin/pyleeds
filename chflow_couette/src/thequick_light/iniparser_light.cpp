@@ -71,15 +71,15 @@ IniParser::ErrorCode IniParser::loadIniFile()
             m_iniView[sectName].pos = pos;
             pos++;
 
-            int commentPos = stringBuf.find_first_of("//");
+            int commentPos = stringBuf.find_first_of("#");
             if (commentPos != string::npos)
             {
-                m_iniView[sectName].comment = ::trim(stringBuf.substr(commentPos + 2));
+                m_iniView[sectName].comment = ::trim(stringBuf.substr(commentPos + 1));
             }
 
             currentSection = sectName;
         }
-        // Check if it is a parameter-value line (param = value // comment)
+        // Check if it is a parameter-value line (param = value # comment)
         else
         {
             ParamContent paramContent;
@@ -101,7 +101,7 @@ IniParser::ErrorCode IniParser::loadIniFile()
 string IniParser::removeSubComment(const string& source)
 {
     string resultStr = source;
-    size_t commentBeginning = resultStr.find("//");
+    size_t commentBeginning = resultStr.find("#");
     if (commentBeginning != string::npos)
         resultStr.erase(commentBeginning, string::npos);
 
@@ -120,7 +120,7 @@ IniParser::ErrorCode IniParser::splitRawParamLine(const string& paramLine,
 
     paramName = ::trim(paramLine.substr(0, equalSymbol));
 
-    int commentBeginning = paramLine.find( "//" );
+    int commentBeginning = paramLine.find( "#" );
     if( commentBeginning == string::npos )
 	{
         paramContent.value = ::trim(paramLine.substr(equalSymbol + 1));
@@ -129,7 +129,7 @@ IniParser::ErrorCode IniParser::splitRawParamLine(const string& paramLine,
 	else
 	{
         paramContent.value = ::trim(paramLine.substr(equalSymbol + 1, commentBeginning - equalSymbol - 1));
-        paramContent.descr = ::trim(paramLine.substr(commentBeginning + 2));
+        paramContent.descr = ::trim(paramLine.substr(commentBeginning + 1));
 	}
 
     return ErrorCode::Success;
@@ -164,7 +164,7 @@ IniParser::ErrorCode IniParser::getParamContent(const string& section,
         return ErrorCode::ParameterNotFound;
 	
 
-	/*
+	/*																												//#ash.26.04.2013.00009
     string nextParamName;
     auto it;
 	for( it = sectIt->second.mParamLines.begin(); it != sectIt->second.mParamLines.end(); it++ )
@@ -249,8 +249,8 @@ IniParser::ErrorCode IniParser::save()
                 rawStrIt++;
             }
             else if (!sectStarts) {
-                fileStream	<< "[" << *sectIt << "]" << "//" << m_iniView[*sectIt].comment << endl;
-                paramLineListIt = m_iniView[*sectIt].paramLinesList.begin();
+                fileStream	<< "[" << *sectIt << "]" << "#" << m_iniView[*sectIt].comment << endl;
+                paramLineListIt = m_iniView[*sectIt].paramLinesList.begin();															//#ash.26.04.2013.00009
                 sectStarts = true;
             }
             else {
@@ -309,7 +309,7 @@ IniParser::ErrorCode IniParser::getScriptFromFile(const string&  section,
     {
         script.push_back((removeSubcomments)? paramListIt->name + "=" + paramListIt->content.value
                                                  :paramListIt->name + "=" + paramListIt->content.value + "//" + paramListIt->content.descr );
-    }
+    }																																				//#ash.26.04.2013.00009
 
     return ErrorCode::Success;
 }
@@ -321,6 +321,7 @@ std::vector<std::string> IniParser::getParamNames(const std::string& section, In
     std::vector<std::string> paramNames;
     auto sectIt = m_iniView.find(section);
     RETURN_DUMMY_IF_ERROR(error, (sectIt == m_iniView.end()) ? ErrorCode::SectionNotFound : ErrorCode::Success, paramNames);
+                                                                                                                                        //#ash.26.04.2013.00009
     const ParamLinesList& paramLinesList = sectIt->second.paramLinesList;
     paramNames.resize(paramLinesList.size());
     ::transform(paramLinesList.begin(), paramLinesList.end(), paramNames.begin(),

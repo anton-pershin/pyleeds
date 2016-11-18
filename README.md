@@ -65,18 +65,18 @@ Configuration file "settings.ini" has an a bit modified ini-format. In essence, 
 
 ```
 [Definitions]
-Nx = 64;
-Ny = 33;
-Nz = 512;
-LxPrefactor = 4; // Lx = LxPrefactor * pi
-a = -1.0;
-b =  1.0;
-LzPrefactor = 16; // Lz = LzPrefactor * pi
-T = 200; // Number of time units to be calculated
-Re = 400.0;
+Nx = 64
+Ny = 33
+Nz = 512
+LxPrefactor = 4 # Lx = LxPrefactor * pi
+a = -1.0
+b =  1.0
+LzPrefactor = 16 # Lz = LzPrefactor * pi
+T = 200 # Number of time units to be calculated
+Re = 400.0
 
 [Initial conditions]
-U_file = data-couette/u90;
+U_file = data-couette/u90
 ```
 
 Sections are denoted by square brackets. If necessary, it is possible to add an inline comment and comments at a separate line.
