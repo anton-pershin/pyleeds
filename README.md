@@ -55,10 +55,10 @@ qr.print_out()
 This is a cmake-project for a launch of calculations with channelflow library for the case of Couette flow. The main feature is that the resulting program is configurated via ini-file. Namely, domain size, discretization, number of time units to integrate, Reynolds number and initial fields are set in the ini-file and, therefore, there is no need to recompile a program when the changes are needed.
 
 ### Project's structure
-/src -- source files;
-/lib -- third-party libraries are located here, namely, channelflow's library and its header files;
-/res -- additional files that accompany the main program are located here. At the moment, it is a configuration ini-file "settings.ini";
-/bin -- this directory emerges when make-build is done and stores results of compilation. Binary program file and all files located in /res will be there.
+- src/ -- source files;
+- lib/ -- third-party libraries are located here, namely, channelflow's library and its header files;
+- res/ -- additional files that accompany the main program are located here. At the moment, it is a configuration ini-file "settings.ini";
+- bin/ -- this directory emerges when make-build is done and stores results of compilation. Binary program file and all files located in res/ will be there.
 
 ### Configuration file
 Configuration file "settings.ini" has an a bit modified ini-format. In essence, it is merely a set of "key=value" pairs grouped by sections:
