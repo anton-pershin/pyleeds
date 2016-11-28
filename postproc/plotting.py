@@ -5,6 +5,10 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 from scipy.integrate import simps
 
+def put_labels_on_axes(ax, space):
+    ax.set_xlabel(space.elements_names[0])
+    ax.set_ylabel(space.elements_names[1])
+
 def plot_filled_contours(field_2d):
     coord1 = field_2d.space.elements[0]
     coord2 = field_2d.space.elements[1]
@@ -27,6 +31,16 @@ def plot_lines(x_list, y_list):
         axes[i].set_xlabel(x_list[i].label)
         axes[i].set_ylabel(y_list[i].label)
     return fig, axes
+
+def quive_field_2d(field_2d):
+    coord1 = field_2d.space.elements[0]
+    coord2 = field_2d.space.elements[1]
+    x, y = np.meshgrid(coord1, coord2, indexing='ij') # ij-indexing guarantees correct order of indexes 
+    fig, ax = plt.subplots()
+    ax.quiver(x, y, field_2d.elements[0], field_2d.elements[1], length=0.15)
+    put_labels_on_axes(ax, space)
+    ax.set_aspect('equal')
+    return fig, ax
 
 def quive_plot_field(field):
     fig = plt.figure()
@@ -53,3 +67,11 @@ def build_fake_3d_box(ax, x, y, z):
 
     for xb, yb, zb in zip(x_box, y_box, z_box):
         ax.plot([xb], [yb], [zb], 'w')
+
+if __name__ == '__main__':
+    from test_fields import get_wave_field
+    test_field = get_wave_field()
+    #fig, ax = quive_field_2d(field_2d)
+    fig, ax = plot_filled_contours(test_field)
+    put_labels_on_axes(ax, test_field.space)
+    plt.show()
