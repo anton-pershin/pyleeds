@@ -68,8 +68,8 @@ class Field(NamedAttributesContainer):
     Base class for field representation
     '''
     def __init__(self, elements, space):
-        self.elements = elements
         self.space = space
+        NamedAttributesContainer.__init__(self, elements, [])
 
     def set_uvw_naming(self):
         if len(self.elements) != 3:
@@ -83,6 +83,33 @@ class Field(NamedAttributesContainer):
         subfield = Field(subcontainer.elements, self.space)
         subfield.set_elements_names(subcontainer.elements_names)
         return subfield
+
+    def change_order(self, elems):
+        indexes = self.space.convert_names_to_indexes_if_necessary(elems)
+        self.elements[:] = [np.transpose(elem, indexes) for elem in self.elements]
+        NamedAttributesContainer.change_order(self, indexes)
+        self.space.change_order(indexes)
+
+    # TODO: must be generalized
+    #def filter(self, coord, rule):
+    def filter(self, coord, filtering_capacity):
+        index = self.space.convert_names_to_indexes_if_necessary([coord])[0]
+        spacing = int(1 / filtering_capacity)
+        indexes_to_filter = list(range(1, self.space.elements[index].shape[0], spacing))
+        filtered_coord_array = np.delete(self.space.elements[index], indexes_to_filter)
+        filtered_coords = []
+        for i in range(len(self.space.elements)):
+            if i == index:
+                filtered_coords.append(np.delete(self.space.elements[index], indexes_to_filter))
+            else:
+                filtered_coords.append(self.space.elements[i])
+
+        filtered_raw_fields = [np.delete(raw_field, indexes_to_filter, axis=index) for raw_field in self.elements]
+        filtered_space = Space(filtered_coords)
+        filtered_space.set_elements_names(self.space.elements_names)
+        filtered_field = Field(filtered_raw_fields, filtered_space)
+        filtered_field.set_elements_names(self.elements_names)
+        return filtered_field
 
     def average(self, elems, along):
         indexes = self.convert_names_to_indexes_if_necessary(elems)
@@ -163,7 +190,7 @@ def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None
                 found_files.append(match.string)
 
     end_time = max_time_found
-    if checker is not []:
+    if checker != []:
         if checker.index(end_time + 1) != 0:
             raise BadFilesOrder('Time order based on files is broken. Probably, some of the files are missed')
 

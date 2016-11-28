@@ -24,6 +24,14 @@ class NamedAttributesContainer(object):
         subcontainer.set_elements_names(subcontainer_elements_names)
         return subcontainer
 
+    def change_order(self, elem_indexes):
+        if len(self.elements) != 1: # exception for 1d 
+            if len(elem_indexes) != len(self.elements):
+                raise DimensionsDoNotMatch('Number of indexes with new order and number of elements do not match')
+            self.elements[:] = [self.elements[i] for i in elem_indexes]
+            if self.elements_names is not []:
+                self.elements_names[:] = [self.elements_names[i] for i in elem_indexes]
+
     def convert_names_to_indexes_if_necessary(self, names):
         indexes = []
         if isinstance(names[0], basestring):
