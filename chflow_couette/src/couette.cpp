@@ -13,18 +13,13 @@ using namespace thequicklight;
 
 int main()
 {
-    cout << "================================================================\n";
-    cout << "This program integrates a plane Couette flow from a random\n";
-    cout << "initial condition. Velocity fields are saved at intervals dT=1.0\n";
-    cout << "in a data-couette/ directory, in channelflow's binary data file\n";
-    cout << "format." << endl << endl;
-
     IniParser parser("settings.ini");
 
     // Define gridsize
-    const int Nx = parser.getValue<int>("Definitions", "Nx");
-    const int Ny = parser.getValue<int>("Definitions", "Ny");
-    const int Nz = parser.getValue<int>("Definitions", "Nz");
+    IniParser::ErrorCode err;
+    const int Nx = parser.getValue<int>("Definitions", "Nx", &err);
+    const int Ny = parser.getValue<int>("Definitions", "Ny", &err);
+    const int Nz = parser.getValue<int>("Definitions", "Nz", &err);
 
     // Define box size
     const int LxPrefactor = parser.getValue<int>("Definitions", "LxPrefactor");
@@ -35,11 +30,13 @@ int main()
     const Real Lx=LxPrefactor*pi;
     const Real Lz=LzPrefactor*pi;
 
+    // Define saving properties
+    string savingDir = parser.getValue<string>("Saving settings", "ChannelFlowFilesDirectory");
+
     cout << "Nx = " << Nx << ", Ny = " << Ny << ", Nz = " << Nz << endl << endl;
     cout << "Lx = " << LxPrefactor << "*pi, Ly = " << b - a << ", Lz = " << LzPrefactor << "*pi" << endl << endl;
-        
+
     // Define flow parameters
-    //const Real Reynolds = 400.0;
     const Real Reynolds = parser.getValue<float>("Definitions", "Re");
     const Real nu = 1.0/Reynolds;
     const Real dPdx  = 0.0;
@@ -66,7 +63,13 @@ int main()
     const Real T0 = 0;
     const Real T1 = parser.getValue<int>("Definitions", "T");
     //flags.t0    = T0;
-    
+
+    cout << "================================================================\n";
+    cout << "This program integrates a plane Couette flow from a random\n";
+    cout << "initial condition at Re = " << Reynolds << " and for " << T1 << " time units.\n";
+    cout << "Velocity fields are saved at intervals dT=1.0 in a " << savingDir << "/ directory.\n";
+    cout << "Domain size: " << LxPrefactor << "*pi X " << b - a << " X " << LzPrefactor << "*pi" << endl << endl;
+
     // Define size and smoothness of initial disturbance
     Real spectralDecay = 0.5;
     Real magnitude  = 0.3;
@@ -74,7 +77,6 @@ int main()
     int kzmax = 3;
     
     bool startFromState = false;
-    IniParser::ErrorCode err;
     string uFile = parser.getValue<string>("Initial conditions", "U_file", &err);
     if (err == IniParser::ErrorCode::Success)
     {
@@ -87,7 +89,7 @@ int main()
     FlowField q;
     if (startFromState)
     {
-        u = FlowField("data-couette/u90");
+        u = FlowField(savingDir + "/" + uFile);
         q = FlowField(u.Nx(), u.Ny(), u.Nz(), 1, u.Lx(), u.Lz(), u.a(), u.b());
     }
     else
@@ -110,11 +112,11 @@ int main()
     DNS dns(u, nu, dt, flags);
     cout << "done" << endl;
     
-    mkdir("data-couette");
-    fstream u_file("u_norms", ios_base::out);
-    fstream v_file("v_norms", ios_base::out);
-    fstream w_file("w_norms", ios_base::out);
-    fstream ke_file("ke", ios_base::out);
+    mkdir(savingDir);
+    //fstream u_file("u_norms", ios_base::out);
+    //fstream v_file("v_norms", ios_base::out);
+    //fstream w_file("w_norms", ios_base::out);
+    //fstream ke_file("ke", ios_base::out);
     for (Real t = T0; t <= T1; t += n*dt)
     {
         cout << "         t == " << t << endl;
@@ -126,16 +128,16 @@ int main()
         cout << "      dPdx == " << dns.dPdx() << endl;
         cout << "     Ubulk == " << dns.Ubulk() << endl;
         
-        u_file << L2Norm(u[0]) << ",";
-        v_file << L2Norm(u[1]) << ",";
-        w_file << L2Norm(u[2]) << ",";
-        ke_file << L2Norm(u[0])*L2Norm(u[0]) + L2Norm(u[1])*L2Norm(u[1]) + L2Norm(u[2])*L2Norm(u[2]) << ",";
+        //u_file << L2Norm(u[0]) << ",";
+        //v_file << L2Norm(u[1]) << ",";
+        //w_file << L2Norm(u[2]) << ",";
+        //ke_file << L2Norm(u[0])*L2Norm(u[0]) + L2Norm(u[1])*L2Norm(u[1]) + L2Norm(u[2])*L2Norm(u[2]) << ",";
         // Write velocity and modified pressure fields to disk
         if (!startFromState)
         {
             u.makePhysical();
-            u.save("data-couette/u"+i2s(int(t)));
-            q.save("data-couette/q"+i2s(int(t)));
+            u.save(savingDir + "/u"+i2s(int(t)));
+            q.save(savingDir + "/q"+i2s(int(t)));
             u.makeSpectral();
         }
         

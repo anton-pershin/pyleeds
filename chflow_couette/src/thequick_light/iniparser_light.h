@@ -12,7 +12,12 @@
 #include <map>
 #include <algorithm>
 
-#define SET_ERROR(ptr, val) if (ptr) *ptr = val
+#define SET_ERROR(ptr, val) \
+    {\
+        val; \
+        if (ptr) *ptr = val; \
+    }
+
 #define RETURN_DUMMY_IF_ERROR(ptr, err, dummy)\
     {\
         thequicklight::IniParser::ErrorCode err__ = err;\
