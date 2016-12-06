@@ -12,6 +12,16 @@ def get_wave_field():
     wave_field.set_elements_names(['u'])
     return wave_field
 
+def get_randomly_spaced_wave_field():
+    x = np.concatenate((np.linspace(-2*np.pi, -1.8*np.pi, 50), np.linspace(-1.8*np.pi + 0.01, -1.6*np.pi, 10), np.linspace(-1.6*np.pi + 0.01, 1.8*np.pi, 50), np.linspace(1.8*np.pi + 0.01, 2*np.pi, 50)))
+    y = np.concatenate((np.linspace(-2*np.pi, -1.8*np.pi, 50), np.linspace(-1.8*np.pi + 0.01, -1.6*np.pi, 10), np.linspace(-1.6*np.pi + 0.01, 1.8*np.pi, 50), np.linspace(1.8*np.pi + 0.01, 2*np.pi, 50)))
+    X, Y = np.meshgrid(x, y, indexing='ij')
+    space = Space([x, y])
+    space.set_elements_names(['x', 'y'])
+    wave_field = Field([np.sin(X) * np.exp(Y / 10)], space)
+    wave_field.set_elements_names(['u'])
+    return wave_field
+
 def get_time_dependent_wave_fields():
     x = np.linspace(-2*np.pi, 2*np.pi, 100)
     y = np.linspace(-2*np.pi, 2*np.pi, 100)

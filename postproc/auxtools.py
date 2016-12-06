@@ -2,13 +2,13 @@ import numpy as np
 
 class NamedAttributesContainer(object):
     def __init__(self, elements, elements_names):
-        self.elements = elements
-        self.elements_names = elements_names
+        self.elements = list(elements)
+        self.elements_names = list(elements_names)
 
     def set_elements_names(self, elements_names):
         if len(elements_names) != len(self.elements):
             raise DimensionsDoNotMatch('Number of elements and number of elements names do not match')
-        self.elements_names = elements_names
+        self.elements_names = list(elements_names)
         for i in range(len(self.elements)):
             setattr(self, self.elements_names[i], self.elements[i])
 
@@ -29,8 +29,12 @@ class NamedAttributesContainer(object):
             if len(elem_indexes) != len(self.elements):
                 raise DimensionsDoNotMatch('Number of indexes with new order and number of elements do not match')
             self.elements[:] = [self.elements[i] for i in elem_indexes]
-            if self.elements_names is not []:
+            if self.elements_names != []:
                 self.elements_names[:] = [self.elements_names[i] for i in elem_indexes]
+
+    def update_attributed_elements(self):
+        for i in range(len(self.elements_names)):
+            setattr(self, self.elements_names[i], self.elements[i])
 
     def convert_names_to_indexes_if_necessary(self, names):
         indexes = []
