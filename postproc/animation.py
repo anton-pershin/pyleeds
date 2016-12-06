@@ -11,6 +11,7 @@ class BaseQuickAnimation(anim.TimedAnimation):
         self.time_units = time_units
         self._contours = []
         self._plots = []
+        self._streamlines = []
         self._quivers = []
         self._grid_rows = 0
         self._grid_cols = 0
@@ -25,6 +26,9 @@ class BaseQuickAnimation(anim.TimedAnimation):
 
     def add_quiver_animation(self, u_fields_2d, v_fields_2d, x, y, title, x_label, y_label):
         self._quivers.append(QuiverAnimationData(u_fields_2d, v_fields_2d, x, y, title, x_label, y_label))
+
+    def add_streamlines_animation(self, u_fields_2d, v_fields_2d, x, y, title, x_label, y_label):
+        self._streamlines.append(QuiverAnimationData(u_fields_2d, v_fields_2d, x, y, title, x_label, y_label))
 
     def add_plot_animation(self, x, y, title, x_label, y_label):
         self._plots.append(PlotAnimationData(x, y, title, x_label, y_label))
@@ -54,6 +58,17 @@ class BaseQuickAnimation(anim.TimedAnimation):
             axes[len(self._contours) + q].set_ylim(quivers_data.coords[1].min(), quivers_data.coords[1].max())
             axes[len(self._contours) + q].set_xlabel(quivers_data.x_label)
             axes[len(self._contours) + q].set_ylabel(quivers_data.y_label)
+
+        for s in range(len(self._streamlines)):
+            quivers_data = self._streamlines[s]
+            field_norm = np.sqrt(quivers_data.u_fields[time]**2 + quivers_data.v_fields[time]**2)
+            axes[len(self._contours) + len(self._quivers) + s].cla()
+            axes[len(self._contours) + len(self._quivers) + s].streamplot(quivers_data.coords[0], quivers_data.coords[1], np.transpose(quivers_data.u_fields[time]), np.transpose(quivers_data.v_fields[time]), linewidth=2, color=np.transpose(field_norm), cmap=plt.cm.inferno, density=2, arrowsize=2)
+            axes[len(self._contours) + len(self._quivers) + s].set_title(quivers_data.title + ', T = ' + str(time))
+            axes[len(self._contours) + len(self._quivers) + s].set_xlim(quivers_data.coords[0].min(), quivers_data.coords[0].max())
+            axes[len(self._contours) + len(self._quivers) + s].set_ylim(quivers_data.coords[1].min(), quivers_data.coords[1].max())
+            axes[len(self._contours) + len(self._quivers) + s].set_xlabel(quivers_data.x_label)
+            axes[len(self._contours) + len(self._quivers) + s].set_ylabel(quivers_data.y_label)
     
         for p in range(len(self._plots)):
             self._plots[p].line.set_data(self._plots[p].x[:time], self._plots[p].y[:time])
@@ -78,6 +93,8 @@ class BaseQuickAnimation(anim.TimedAnimation):
             time_units_number = len(self._contours[0].fields)
         elif self._quivers != []:
             time_units_number = len(self._quivers[0].u_fields)
+        elif self._streamlines != []:
+            time_units_number = len(self._streamlines[0].u_fields)
         elif self._plots != []:
             time_units_number = len(self._plots[0].x)
         else:
@@ -100,6 +117,15 @@ class BaseQuickAnimation(anim.TimedAnimation):
             if time_units_number != len(self._quivers[q].u_fields):
                 raise NotConsistentTimeUnits('Number of time units in ' + str(q) + 'th quiver does not match with check value (1st quiver)')
             self._put_quiver_into_figure(gs, curr_row, curr_col, self._quivers[q])
+            curr_row += 1
+            if curr_row == self._grid_rows:
+                curr_col += 1
+                curr_row = 0
+
+        for s in range(len(self._streamlines)):
+            if time_units_number != len(self._streamlines[s].u_fields):
+                raise NotConsistentTimeUnits('Number of time units in ' + str(s) + 'th quiver does not match with check value (1st quiver)')
+            self._put_quiver_into_figure(gs, curr_row, curr_col, self._streamlines[s])
             curr_row += 1
             if curr_row == self._grid_rows:
                 curr_col += 1
@@ -140,7 +166,6 @@ class BaseQuickAnimation(anim.TimedAnimation):
         line = Line2D([], [], color='black', linewidth=2)
         plot_data.set_line(line)
         ax.add_line(line)
-        print(plot_data.x)
         ax.set_xlim(min(plot_data.x), 1.2*max(plot_data.x))
         ax.set_ylim(min(plot_data.y), 1.2*max(plot_data.y))
         ax.set_aspect('equal')
@@ -199,7 +224,6 @@ class QuickAnimation(BaseQuickAnimation):
         coord2 = fields[0].space.elements[1]
         coord1_name = fields[0].space.elements_names[0]
         coord2_name = fields[0].space.elements_names[1]
-
         BaseQuickAnimation.add_contour_animation(self, raw_fields, coord1, coord2, title, coord1_name, coord2_name)
 
     def add_quiver_animation(self, fields, title):
@@ -210,8 +234,17 @@ class QuickAnimation(BaseQuickAnimation):
         coord2 = fields[0].space.elements[1]
         coord1_name = fields[0].space.elements_names[0]
         coord2_name = fields[0].space.elements_names[1]
-
         BaseQuickAnimation.add_quiver_animation(self, raw_fields1, raw_fields2, coord1, coord2, title, coord1_name, coord2_name)
+
+    def add_streamlines_animation(self, fields, title):
+        self._verify_fields(fields, 2, 2)
+        raw_fields1 = [field.elements[0] for field in fields]
+        raw_fields2 = [field.elements[1] for field in fields]
+        coord1 = fields[0].space.elements[0]
+        coord2 = fields[0].space.elements[1]
+        coord1_name = fields[0].space.elements_names[0]
+        coord2_name = fields[0].space.elements_names[1]
+        BaseQuickAnimation.add_streamlines_animation(self, raw_fields1, raw_fields2, coord1, coord2, title, coord1_name, coord2_name)
 
     def add_plot_animation(self, x_labeled_list, y_labeled_list, title):
         BaseQuickAnimation.add_plot_animation(self, x_labeled_list.values, y_labeled_list.values, title, x_labeled_list.label, y_labeled_list.label)
@@ -232,19 +265,21 @@ class IncorrectAnimationData(Exception):
 
 if __name__ == '__main__':
     from test_fields import get_time_dependent_wave_fields, get_time_dependent_circular_flow_fields
-    test_fields = get_time_dependent_wave_fields()
-    anim_ = QuickAnimation(range(len(test_fields)))
-    anim_.set_layout(1, 1)
-    anim_.add_contour_animation(test_fields, 'Test scalar field')
-    anim_.save('test_contour_animation.mp4')
+    #test_fields = get_time_dependent_wave_fields()
+    #anim_ = QuickAnimation(range(len(test_fields)))
+    #anim_.set_layout(1, 1)
+    #anim_.add_contour_animation(test_fields, 'Test scalar field')
+    #anim_.save('test_contour_animation.mp4')
 
     test_fields = get_time_dependent_circular_flow_fields()
     filtered_test_fields = []
     for field in test_fields:
-        filtered_test_fields.append(field.filter('x', 0.5).filter('y', 0.5))
-        #filtered_test_fields.append(field)
+        #filtered_test_fields.append(field.filter('x', 0.5).filter('y', 0.5))
+        filtered_test_fields.append(field)
 
     anim_ = QuickAnimation(range(len(filtered_test_fields)))
     anim_.set_layout(1, 1)
-    anim_.add_quiver_animation(filtered_test_fields, 'Flow past a cylinder with varying circulation')
-    anim_.save('test_quiver_animation.mp4')
+    #anim_.add_quiver_animation(filtered_test_fields, 'Flow past a cylinder with varying circulation')
+    #anim_.save('test_quiver_animation.mp4')
+    anim_.add_streamlines_animation(filtered_test_fields, 'Flow past a cylinder with varying circulation')
+    anim_.save('test_streamlines_animation.mp4')
