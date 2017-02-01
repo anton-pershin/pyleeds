@@ -3,7 +3,8 @@ import numpy as np
 from field import Field, Space
 
 def get_wave_field():
-    x = np.linspace(-2*np.pi, 2*np.pi, 100)
+    #x = np.linspace(-2*np.pi, 2*np.pi, 100)
+    x = np.linspace(0, np.pi, 100)
     y = np.linspace(-2*np.pi, 2*np.pi, 100)
     X, Y = np.meshgrid(x, y, indexing='ij')
     space = Space([x, y])
@@ -65,3 +66,33 @@ def get_time_dependent_circular_flow_fields():
         circ_field.set_elements_names(['u', 'v'])
         fields.append(circ_field)
     return fields
+
+def get_simple_1D_field():
+    x = np.linspace(0, 5, 100)
+    space = Space([x])
+    space.set_elements_names(['x'])
+    field = Field([x**2], space)
+    field.set_elements_names(['u'])
+
+    return field
+
+def get_simple_2D_field():
+    x = np.linspace(0, 2, 100)
+    y = np.linspace(0, 2, 100)
+    X, Y = np.meshgrid(x, y, indexing='ij')
+    space = Space([x, y])
+    space.set_elements_names(['x', 'y'])
+    field = Field([X**2 + Y**3], space)
+    field.set_elements_names(['u'])
+    return field
+
+def get_simple_3D_field():
+    x = np.linspace(0, 2, 80)
+    y = np.linspace(0, 2, 100)
+    z = np.linspace(0, 2, 120)
+    X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+    space = Space([x, y, z])
+    space.set_elements_names(['x', 'y', 'z'])
+    field = Field([X**2 + Y**3 + Z**4], space)
+    field.set_elements_names(['u'])
+    return field
