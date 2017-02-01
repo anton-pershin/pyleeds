@@ -6,7 +6,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 import numpy as np
-from scipy.integrate import simps
 from auxtools import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue
 
 class Space(NamedAttributesContainer):
@@ -35,33 +34,6 @@ class Space(NamedAttributesContainer):
         subspace = Space(subsontainer.elements)
         subspace.set_elements_names(subsontainer.elements_names)
         return subspace
-
-#class Field(object):
-#    '''
-#    Base class for field representation
-#    '''
-#    def __init__(self, u, v, w, x, y, z):
-#        self.u = u
-#        self.v = v
-#        self.w = w
-#        self.x = x
-#        self.y = y
-#        self.z = z
-#
-#    def L2_norms(self, normalize):
-#        L2_norm_u = 0.
-#        L2_norm_v = 0.
-#        L2_norm_w = 0.
-#
-#        V = 1
-#        if normalize:
-#            V = abs(self.x[0] - self.x[len(self.x)-1]) * abs(self.y[0] - self.y[len(self.y)-1]) * abs(self.z[0] - self.z[len(self.z)-1])
-#            #V = 4*np.pi * 2 * 2*np.pi
-#        L2_norm_u = np.sqrt(-integrate_field(np.power(self.u, 2), self.x, self.y, self.z) / V)
-#        L2_norm_v = np.sqrt(-integrate_field(np.power(self.v, 2), self.x, self.y, self.z) / V)
-#        L2_norm_w = np.sqrt(-integrate_field(np.power(self.w, 2), self.x, self.y, self.z) / V)
-#
-#        return (L2_norm_u, L2_norm_v, L2_norm_w)
 
 class Field(NamedAttributesContainer):
     '''
@@ -98,121 +70,141 @@ class Field(NamedAttributesContainer):
         self.update_attributed_elements()
         self.space.update_attributed_elements()
 
-    # TODO: must be generalized
-    #def filter(self, coord, rule):
-    def filter(self, coord, filtering_capacity):
-        index = self.space.convert_names_to_indexes_if_necessary([coord])[0]
-        spacing = int(1 / filtering_capacity)
-        indexes_to_filter = list(range(1, self.space.elements[index].shape[0], spacing))
-        filtered_coord_array = np.delete(self.space.elements[index], indexes_to_filter)
-        filtered_coords = []
-        for i in range(len(self.space.elements)):
-            if i == index:
-                filtered_coords.append(np.delete(self.space.elements[index], indexes_to_filter))
-            else:
-                filtered_coords.append(self.space.elements[i])
+def L2_norms(field, normalize):
+    V = 1
+    if normalize:
+        for i in range(len(field.space.elements)):
+            coord = field.space.elements[i]
+            V *= abs(coord[0] - coord[len(coord)-1])
 
-        filtered_raw_fields = [np.delete(raw_field, indexes_to_filter, axis=index) for raw_field in self.elements]
-        filtered_space = Space(filtered_coords)
-        #filtered_space.set_elements_names(self.space.elements_names)
-        filtered_field = Field(filtered_raw_fields, filtered_space)
-        #filtered_field.set_elements_names(self.elements_names)
-        filtered_field.grab_namings(self)
-        return filtered_field
+    L2_norms = []
+    for i in range(len(field.elements)):
+        val = np.sqrt(integrate_field(np.power(field.elements[0], 2), field.space) / V)
+        L2_norms.append(LabeledValue(val, '||' + self.elements_names[i] + '||'))
 
-    def map_to_equispaced_mesh(self, details_capacity_list):
-        if self.space.dim() != 2:
-            raise DimensionsDoNotMatch('Mapping to equispaced mesh is possible only for 2-dimensional space')
+    return L2_norms
 
-        new_coord_arrays = []
-        indexes_mappings = [] # i -> mapping for ith coord
-                              # mapping for ith coord: equispaced_array_index -> original_array_nearest_left_index
-        for orig_coord_array, details_capacity in zip(self.space.elements, details_capacity_list):
-            deltas = np.abs(orig_coord_array - np.roll(orig_coord_array, 1))
-            max_delta = np.max(deltas[1:])
-            min_delta = np.min(deltas[1:])
-            equispaced_delta = min_delta + (1 - details_capacity) * (max_delta - min_delta)
-            min_value = np.min(orig_coord_array)
-            max_value = np.max(orig_coord_array)
-            equispaced_number = (np.max(orig_coord_array) - np.min(orig_coord_array)) / equispaced_delta + 1
-            equispaced_array = np.linspace(min_value, max_value, equispaced_number)
-            new_coord_arrays.append(equispaced_array)
-            indexes_mappings.append(map_differently_spaced_arrays(orig_coord_array, equispaced_array))
+# TODO: must be generalized
+#def filter(self, coord, rule):
+def filter(field, coord, filtering_capacity):
+    index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    spacing = int(1 / filtering_capacity)
+    indexes_to_filter = list(range(1, field.space.elements[index].shape[0], spacing))
+    filtered_coord_array = np.delete(field.space.elements[index], indexes_to_filter)
+    filtered_coords = []
+    for i in range(len(field.space.elements)):
+        if i == index:
+            filtered_coords.append(np.delete(field.space.elements[index], indexes_to_filter))
+        else:
+            filtered_coords.append(field.space.elements[i])
 
-        # TODO: need to rewrite in matrix form
-        new_x = new_coord_arrays[0]
-        new_y = new_coord_arrays[1]
-        x_indexes_mapping = indexes_mappings[0]
-        y_indexes_mapping = indexes_mappings[1]
-        new_elements = [np.zeros((new_x.shape[0], new_y.shape[0])) for i in range(len(self.elements))]
-        for i in range(len(new_x)):
-            x = new_x[i]
-            x_l = self.space.elements[0][x_indexes_mapping[i]]
-            if i != len(new_x) - 1:
-                x_r = self.space.elements[0][x_indexes_mapping[i] + 1]
-            for j in range(len(new_y)):
-                y = new_y[j]
-                y_l = self.space.elements[1][y_indexes_mapping[j]]
-                if j != len(new_y) - 1:
-                    y_r = self.space.elements[1][y_indexes_mapping[j] + 1]
+    filtered_raw_fields = [np.delete(raw_field, indexes_to_filter, axis=index) for raw_field in field.elements]
+    filtered_space = Space(filtered_coords)
+    #filtered_space.set_elements_names(field.space.elements_names)
+    filtered_field = Field(filtered_raw_fields, filtered_space)
+    #filtered_field.set_elements_names(field.elements_names)
+    filtered_field.grab_namings(field)
+    return filtered_field
 
-                for u, new_u in zip(self.elements, new_elements):
-                    if i == len(new_x) - 1 and j == len(new_y) - 1: # "corner" of domain
-                        new_u[i, j] = u[x_indexes_mapping[i], y_indexes_mapping[j]]
-                        continue
-                    #print(new_x.shape)
-                    #print(new_y.shape)
-                    #print('Shape')
-                    #print(u.shape)
-                    #print('x_indexes_mapping')
-                    #print(x_indexes_mapping)
-                    #print('y_indexes_mapping')
-                    #print(y_indexes_mapping)
-                    #print('i = ' + str(i) + ', j = ' + str(j))
+def average(field, elems, along):
+    indexes = field.convert_names_to_indexes_if_necessary(elems)
+    coord_index = field.space.convert_names_to_indexes_if_necessary([along])[0]
+    averaged_subfield = field.make_subfield(elems)
+    averaged_raw_fields = []
+    for raw_field in averaged_subfield.elements:
+        averaged_raw_fields.append(np.mean(raw_field, coord_index))
 
-                    if i == len(new_x) - 1: # linear interpolation along the y-axis
-                        new_u[i, j] = (y_r - y) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                    + (y - y_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1]
-                    elif j == len(new_y) - 1: # linear interpolation along the x-axis
-                        new_u[i, j] = (x_r - x) / (x_r - x_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                    + (x - x_l) / (x_r - x_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]]
-                    else: # bilinear interpolation
-                        new_u[i, j] = (x_r - x) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
-                                    + (x_r - x) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1] \
-                                    + (x - x_l) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]] \
-                                    + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j] + 1]
+    averaged_subfield.elements = averaged_raw_fields
+    all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(averaged_subfield.space.elements))
+    averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
+    return averaged_subfield
 
-        equispaced_space = Space(new_coord_arrays)
-        new_field = Field(new_elements, equispaced_space)
-        new_field.grab_namings(self)
-        return new_field
+def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
+    # Two ways of enlarging -- extrapolation and filling by zeros.
+    # TODO: trying_to_extrapolate is ignored now. Should be added
+    # IMPORTANT: equispaced mesh is assumed along coord direction
+    index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    step = field.space.elements[index][1] - field.space.elements[index][0]
+    old_maximum = field.space.elements[index][-1] 
+    number_of_points_on_each_edge = int((new_maximum - old_maximum) / step / 2)
+    edge_start = field.space.elements[index][-1] + step
+    edge_end = edge_start + step * (2 * number_of_points_on_each_edge - 1)
+    
+    enlarged_space = Space(field.space.elements)
+    enlarged_space.elements[index] = np.append(enlarged_space.elements[index], np.linspace(edge_start, edge_end, 2 * number_of_points_on_each_edge))
 
-    def average(self, elems, along):
-        indexes = self.convert_names_to_indexes_if_necessary(elems)
-        coord_index = self.space.convert_names_to_indexes_if_necessary([along])[0]
-        averaged_subfield = self.make_subfield(elems)
-        averaged_raw_fields = []
-        for raw_field in averaged_subfield.elements:
-            averaged_raw_fields.append(np.mean(raw_field, coord_index))
+    enlarged_raw_field = [np.lib.pad(elem, ((0,0), (0,0), (number_of_points_on_each_edge, number_of_points_on_each_edge)), 'constant') for elem in self.elements]
+    enlarged_field = Field(enlarged_raw_field, enlarged_space)
+    enlarged_field.grab_namings(field)
 
-        averaged_subfield.elements = averaged_raw_fields
-        all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(averaged_subfield.space.elements))
-        averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
-        return averaged_subfield
+    return enlarged_field
 
-    def L2_norms(self, normalize):
-        V = 1
-        if normalize:
-            for i in range(len(self.space.elements)):
-                coord = self.space.elements[i]
-                V *= abs(coord[0] - coord[len(coord)-1])
+def map_to_equispaced_mesh(field, details_capacity_list):
+    if field.space.dim() != 2:
+        raise DimensionsDoNotMatch('Mapping to equispaced mesh is possible only for 2-dimensional space')
 
-        L2_norms = []
-        for i in range(len(self.elements)):
-            val = np.sqrt(integrate_field(np.power(self.u, 2), self.space.x, self.space.y, self.space.z) / V)            
-            L2_norms.append(LabeledValue(val, '||' + self.elements_names[i] + '||'))
+    new_coord_arrays = []
+    indexes_mappings = [] # i -> mapping for ith coord
+                          # mapping for ith coord: equispaced_array_index -> original_array_nearest_left_index
+    for orig_coord_array, details_capacity in zip(field.space.elements, details_capacity_list):
+        deltas = np.abs(orig_coord_array - np.roll(orig_coord_array, 1))
+        max_delta = np.max(deltas[1:])
+        min_delta = np.min(deltas[1:])
+        equispaced_delta = min_delta + (1 - details_capacity) * (max_delta - min_delta)
+        min_value = np.min(orig_coord_array)
+        max_value = np.max(orig_coord_array)
+        equispaced_number = (np.max(orig_coord_array) - np.min(orig_coord_array)) / equispaced_delta + 1
+        equispaced_array = np.linspace(min_value, max_value, equispaced_number)
+        new_coord_arrays.append(equispaced_array)
+        indexes_mappings.append(map_differently_spaced_arrays(orig_coord_array, equispaced_array))
 
-        return L2_norms
+    # TODO: need to rewrite in matrix form
+    new_x = new_coord_arrays[0]
+    new_y = new_coord_arrays[1]
+    x_indexes_mapping = indexes_mappings[0]
+    y_indexes_mapping = indexes_mappings[1]
+    new_elements = [np.zeros((new_x.shape[0], new_y.shape[0])) for i in range(len(field.elements))]
+    for i in range(len(new_x)):
+        x = new_x[i]
+        x_l = field.space.elements[0][x_indexes_mapping[i]]
+        if i != len(new_x) - 1:
+            x_r = field.space.elements[0][x_indexes_mapping[i] + 1]
+        for j in range(len(new_y)):
+            y = new_y[j]
+            y_l = field.space.elements[1][y_indexes_mapping[j]]
+            if j != len(new_y) - 1:
+                y_r = field.space.elements[1][y_indexes_mapping[j] + 1]
+
+            for u, new_u in zip(field.elements, new_elements):
+                if i == len(new_x) - 1 and j == len(new_y) - 1: # "corner" of domain
+                    new_u[i, j] = u[x_indexes_mapping[i], y_indexes_mapping[j]]
+                    continue
+                #print(new_x.shape)
+                #print(new_y.shape)
+                #print('Shape')
+                #print(u.shape)
+                #print('x_indexes_mapping')
+                #print(x_indexes_mapping)
+                #print('y_indexes_mapping')
+                #print(y_indexes_mapping)
+                #print('i = ' + str(i) + ', j = ' + str(j))
+
+                if i == len(new_x) - 1: # linear interpolation along the y-axis
+                    new_u[i, j] = (y_r - y) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
+                                + (y - y_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1]
+                elif j == len(new_y) - 1: # linear interpolation along the x-axis
+                    new_u[i, j] = (x_r - x) / (x_r - x_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
+                                + (x - x_l) / (x_r - x_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]]
+                else: # bilinear interpolation
+                    new_u[i, j] = (x_r - x) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j]] \
+                                + (x_r - x) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i], y_indexes_mapping[j] + 1] \
+                                + (x - x_l) * (y_r - y) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j]] \
+                                + (x - x_l) * (y - y_l) / (x_r - x_l) / (y_r - y_l) * u[x_indexes_mapping[i] + 1, y_indexes_mapping[j] + 1]
+
+    equispaced_space = Space(new_coord_arrays)
+    new_field = Field(new_elements, equispaced_space)
+    new_field.grab_namings(field)
+    return new_field
 
 def map_differently_spaced_arrays(orig_coord_array, new_coord_array):
     def search_for_next_left_index(array, start_index, value):
@@ -232,18 +224,98 @@ def map_differently_spaced_arrays(orig_coord_array, new_coord_array):
         left_indexes_array[i] = search_for_next_left_index(orig_coord_array, left_index, new_coord_array[i])
     return left_indexes_array
 
-def integrate_field(field, x, y, z):
-    Nx = x.shape[0]
-    Ny = y.shape[0]
-    I_xy = np.zeros((Nx, Ny))
-    I = np.zeros(Nx)
-    for nx in range(Nx):
-        for ny in range(Ny):
-            I_xy[nx, ny] = np.trapz(field[nx, ny, :], z)
+def integrate_field(raw_field, space):
+    # Introduce flat high-dimensional array. 
+    # To visualize it, imagine a sequence of projections (cube to square, square to line, line to point)
+    # which are flattened into one-dimensional array
+    dims = [space.elements[i].shape[0] for i in range(len(space.elements))] # [N0, N1, N2, N3, N4]
+    print('dims:')
+    print dims
+    flat_array_dims = [1] + [np.prod(dims[:i]) for i in range(1, len(dims))] # [1, N0, N0*N1, N0*N1*N2, N0*N1*N2*N3]
+    print('flat_array_dims:')
+    print flat_array_dims
+    flat_array = np.zeros((np.sum(flat_array_dims),))
+    flat_array_offsets = np.array([np.sum(flat_array_dims[i:len(flat_array_dims)]) for i in range(1, len(flat_array_dims))] + [0]) # [N0 + N0*N1 + N0*N1*N2 + N0*N1*N2*N3, N0*N1 + N0*N1*N2 + N0*N1*N2*N3, N0*N1*N2 + N0*N1*N2*N3, N0*N1*N2*N3, 0]
+    print('flat_array_offsets:')
+    print flat_array_offsets
 
-        I[nx] = np.trapz(I_xy[nx, :], y)
+    # NEED TO CREATE ARRAY OF INDEXES SHIFTS FOR EVERY DIMENSION
+    # For dim_i = 4: [N1*N2*N3, N2*N3, N3, 1]
+    # For dim_i = 3: [N1*N2, N2, 1]
+    # For dim_i = 2: [N1, 1]
+    # For dim_i = 1: [1]
+    # For dim_i = 0: []
 
-    return np.trapz(I, x)
+    indexes_shifts = [] # index is dimension. Element is np.array of shifts
+    for i in range(len(dims)):
+        if i != 0:
+            shifts = np.array([np.prod(dims[j:i]) for j in range(1, i)], np.int32) # np.array([]) gives float64 by default, so need to set explicitly    print('indexes_shifts:')
+            indexes_shifts.append(np.concatenate((shifts, [1])))
+        else:
+            indexes_shifts.append(np.array([], np.int32))
+
+    print('indexes_shifts:')
+    print indexes_shifts
+
+    last_dim = len(raw_field.shape) - 1
+
+    # This func merely generates nested loops
+    # indexes_list must be initilized by zeros
+    def recurs_integration(dim_i, indexes_array):
+        #sum_array_offset is formed from previous dimensions. 
+        # Suppose we have dimensions i = 0,1,2,3,4
+        # We are looping through i = 0, 1, 2, 3. For i=4 we integrate along the whole coordinate 
+        # for every combination ijkl where i,j,k,l in corresp. dimensions. We should suggest such layout
+        # that the last looping will arange integrated values subsequently. Then we have flat_index:
+        # flat_index = i * N1 * N2 * N3 + j * N2 * N3 + k * N3 + l
+        # Obivously, maximum index here is (N0-1)*N1*N2*N3 + (N1-1)*N2*N3 + (N2-1)*N3 + N3-1 = N0*N1*N2*N3 - 1. Denote it (plus 1) flat_index_offset_0123
+        # When the loop over l finishes, before going to k + 1 we integrate along i=3 coordinate.
+        # At that point we have ijk indexes and subseqently located points corresponding to i=3 coordinate starting
+        # at flat_index = i * N1 * N2 * N3 + j * N2 * N3 + k * N3 and taking N3 points. Integrated value should be stored at
+        # flat_index = flat_index_offset_0123 + i * N1 * N2 + j * N2 + k. Maximum index then will be 
+        # flat_index_offset_012 = flat_index_offset_0123 + (N0-1)*N1*N2 + (N1-1)*N2 + N2-1 + 1 = 
+        # flat_index_offset_0123 + N0*N1*N2 = N0*N1*N2*N3 + N0*N1*N2
+        # And so on. The results will be stored in the last element of flat array
+
+        flat_array_projection_offset = flat_array_offsets[dim_i]
+        coord_offset = np.dot(indexes_shifts[dim_i], indexes_array)
+        dim_N = dims[dim_i]
+
+        if dim_i == last_dim: # last coordinate -- integrate along the last coordinate
+            flat_array[flat_array_projection_offset + coord_offset] = np.trapz(raw_field[tuple(indexes_array + [slice(0, dim_N)])], space.elements[dim_i])
+        else:
+            print('\n')
+            print(dim_i * '\t' + 'Looping dimension ' + str(dim_i))
+            print(dim_i * '\t' + 'indexes_array:')
+            print(dim_i * '\t' + str(indexes_array))
+            print(dim_i * '\t' + 'flat_array_projection_offset = ' + str(flat_array_projection_offset))
+            print(dim_i * '\t' + 'coord_offset = ' + str(coord_offset))
+
+            for n in range(dim_N):
+                print(dim_i * '\t' + 'Go recursively to dimension ' + str(dim_i + 1) + ' with index_array ' + str(indexes_array + [n]) + ', projection offset ' + str(flat_array_offsets[dim_i + 1]) + ' and indexes shifts ' + str(indexes_shifts[dim_i + 1]))
+                recurs_integration(dim_i + 1, indexes_array + [n]) # jump to the next dimension and shift offset correspondingly
+                print(dim_i * '\t' + 'Integrate results from the higher dimension')
+
+            higher_dim_proj_offset = flat_array_offsets[dim_i + 1]
+            higher_dim_coord_offset = np.dot(indexes_shifts[dim_i + 1][:-1], indexes_array) # essentially, higher_dim_coord_offset is an address of the first element of higher dim projection
+            flat_array[flat_array_projection_offset + coord_offset] = \
+                np.trapz(flat_array[higher_dim_proj_offset + higher_dim_coord_offset : higher_dim_proj_offset + higher_dim_coord_offset + dim_N], space.elements[dim_i])
+#        for n in range(dim_N):
+#            if dim_i == pre_last_dim: # pre-last coordinate -- integrate along the last coordinate
+#                print(dim_i * '\t\t' + 'Pre-last dimension, so integrate along last dimension for n = ' + str(n))
+#                flat_array[flat_array_projection_offset + coord_offset + n] = np.trapz(raw_field[tuple(indexes_array + [n, slice(0, dim_N)])], space.elements[dim_i])
+#            else:
+#                print(dim_i * '\t\t' + 'Go recursively to the higher dimension')
+#                recurs_integration(dim_i + 1, indexes_array + [n]) # jump to the next dimension and shift offset correspondingly
+#                print(dim_i * '\t\t' + 'Integrate results from the higher dimension')
+#                higher_dim_proj_offset = flat_array_offsets[dim_i + 1]
+#                higher_dim_coord_offset = np.dot(indexes_shifts[dim_i + 1], indexes_array + [n])
+#                flat_array[flat_array_projection_offset + coord_offset + n] = \
+#                    np.trapz(flat_array[higher_dim_proj_offset + higher_dim_coord_offset : higher_dim_proj_offset + higher_dim_coord_offset + dims[dim_i + 1]])
+
+    recurs_integration(0, [])
+    print flat_array
+    return flat_array[-1]
 
 def read_field(filename):
     f = h5py.File(filename, 'r')
@@ -264,7 +336,7 @@ def read_field(filename):
     space.set_xyz_naming()
     field = Field([u_numpy[:,::-1,:], v_numpy[:,::-1,:], w_numpy[:,::-1,:]], space)
     field.set_uvw_naming()
-    return field
+    return field, dict(f.attrs)
 
 def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None):
     files_list = os.listdir(path)
@@ -295,6 +367,24 @@ def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None
     
     return fields
 
+def write_field(field, attrs, filename):
+    f = h5py.File(filename, 'w')
+    # Copy attributes
+    for key, value in attrs.iteritems():
+        f.attrs[key] = value
+        
+    data = f.create_group('data')
+    geom = f.create_group('geom')
+    data['u'] = np.stack(tuple(field.elements), axis=0)
+    for i in range(len(field.space.elements_names)):
+        # Dirty hack -- the y-coordinate is to be inverted in chflow, so invert it here
+        if field.space.elements_names[i] == 'y':
+            geom[field.space.elements_names[i]] = field.space.elements[i][::-1]
+        else:
+            geom[field.space.elements_names[i]] = field.space.elements[i]
+
+    f.close()
+
 class BadFilesOrder(Exception):
     pass
 
@@ -314,7 +404,7 @@ if __name__ == '__main__':
     print('Not matched indexes:')
     print([i for i,j in zip(mapping, correct_mapping) if i != j])
 
-    from test_fields import get_randomly_spaced_wave_field
+    from test_fields import get_simple_1D_field, get_simple_2D_field, get_simple_3D_field, get_wave_field, get_randomly_spaced_wave_field
     from plotting import plot_filled_contours
     import matplotlib.pyplot as plt
     test_field = get_randomly_spaced_wave_field()
@@ -322,3 +412,8 @@ if __name__ == '__main__':
     plot_filled_contours(equispaced_field)
     #plot_filled_contours(test_field)
     plt.show()
+
+    #wave_field = get_wave_field()
+    wave_field = get_simple_3D_field()
+    val = integrate_field(wave_field.elements[0], wave_field.space)
+    print val

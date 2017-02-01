@@ -7,7 +7,7 @@ This is a python package devoted to the tools for post-processing of results obt
 ### Example
 The most common example of usage of postproc package. It includes loading channelflow data from .h5 files, creating animations, plots and making a quick report.
 ```python
-from postproc.field import Field, read_fields
+from postproc.field import Field, read_fields, L2_norms, average
 from postproc.plotting import plot_lines, plot_filled_contours
 from postproc.auxtools import LabeledList
 from postproc.report import QuickReport
@@ -23,8 +23,8 @@ u_L2norms = LabeledList()
 v_L2norms = LabeledList()
 w_L2norms = LabeledList()
 for field in fields:
-    u_fields_yz.append(field.average(['u'], 'x'))
-    L2norms = field.L2_norms(normalize=True)
+    u_fields_yz.append(average(field, ['u'], 'x'))
+    L2norms = L2_norms(field, normalize=True)
     u_L2norms.append(L2norms[0])
     v_L2norms.append(L2norms[1])
     w_L2norms.append(L2norms[2])
