@@ -6,22 +6,20 @@ import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 import numpy as np
-from auxtools import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue
+from auxtools import NamedAttributesContainer, DimensionsDoNotMatch, LabeledValue, is_sequence
+
+# TODO: implement method swapcoords for Field. Sometimes it is useful to change the leading dimension.
 
 class Space(NamedAttributesContainer):
     def __init__(self, coords):
         #self.coords = list(coords)
         NamedAttributesContainer.__init__(self, coords, [])
 
+    def __del__(self):
+        print('____ delete space ____')
+
     def dim(self):
         return len(self.elements)
-
-    #def set_internal_coordinate_names(self, coords_names):
-    #    if len(coords_names) != len(self.coords):
-    #        raise DimensionsDoNotMatch('Number of coordinate names and dimension do not match')
-    #    self._coords_names = coords_names
-    #    for i in range(len(self.coords)):
-    #        setattr(self, coords_names[i], self.coords[i])
 
     def set_xyz_naming(self):
         if self.dim() != 3:
@@ -42,6 +40,9 @@ class Field(NamedAttributesContainer):
     def __init__(self, elements, space):
         self.space = space
         NamedAttributesContainer.__init__(self, elements, [])
+
+    def __del__(self):
+        print('____ delete field ____')
 
     def grab_namings(self, another_field):
         self.space.set_elements_names(another_field.space.elements_names)
@@ -79,10 +80,35 @@ def L2_norms(field, normalize):
 
     L2_norms = []
     for i in range(len(field.elements)):
-        val = np.sqrt(integrate_field(np.power(field.elements[0], 2), field.space) / V)
+        val = np.sqrt(integrate_field(np.power(field.elements[i], 2), field.space) / V)
         L2_norms.append(LabeledValue(val, '||' + self.elements_names[i] + '||'))
 
     return L2_norms
+
+def norms(fields_, elem, normalize=True):
+    fields = []
+    if is_sequence(fields_):
+        fields = list(fields_)
+    else:
+        fields.append(fields_)
+
+    L2_norms = []
+    for field in fields:
+        elem_index = field.convert_names_to_indexes_if_necessary(elem)[0]
+        V = 1
+        if normalize:
+            for i in range(len(field.space.elements)):
+                coord = field.space.elements[i]
+                V *= abs(coord[0] - coord[len(coord)-1])
+
+        val = np.sqrt(integrate_field(np.power(field.elements[elem_index], 2), field.space) / V)
+        L2_norms.append(val)
+        #L2_norms.append(LabeledValue(val, '||' + self.elements_names[0] + '||'))
+
+    if is_sequence(fields_):
+        return np.array(L2_norms)
+    else:
+        return L2_norms[0]
 
 # TODO: must be generalized
 #def filter(self, coord, rule):
@@ -119,6 +145,35 @@ def average(field, elems, along):
     averaged_subfield.space = averaged_subfield.space.make_subspace(all_indexes_expect_coord_index)
     return averaged_subfield
 
+def at(field, coord, value):
+    #indexes = field.convert_names_to_indexes_if_necessary(elems)
+    coord_index = field.space.convert_names_to_indexes_if_necessary([coord])[0]
+    all_indexes_expect_coord_index = range(coord_index) + range(coord_index + 1, len(field.space.elements))
+    subspace = field.space.make_subspace(all_indexes_expect_coord_index)
+
+    # As grid is not supposed to be even, use brute force to find the closest index at the given coordinate
+    # Binary search is possible for sure, but there is no need -- it is quick enough
+    value_index = np.searchsorted(field.space.elements[coord_index], (value)) # employs binary search, finds index BEFORE which value should be inserted => need to check the previous index
+    if value_index == 0 or value_index == len(field.space.elements[coord_index]):
+        print('Value found only at the edge of space. It might be wrong.')
+    if value_index != 0:
+        if np.abs(value - field.space.elements[coord_index][value_index - 1]) < np.abs(value - field.space.elements[coord_index][value_index]):
+            value_index -= 1
+    access_list = []
+    for i in range(len(field.space.elements)):
+        if i != coord_index:
+            access_list.append(slice(0, field.space.elements[i].shape[0]))
+        else:
+            access_list.append(value_index)
+
+    raw_subfields = []
+    for raw_field in field.elements:
+        raw_subfields.append(raw_field[tuple(access_list)])
+
+    subfield = Field(raw_subfields, subspace)
+    subfield.set_elements_names(field.elements_names)
+    return subfield
+
 def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     # Two ways of enlarging -- extrapolation and filling by zeros.
     # TODO: trying_to_extrapolate is ignored now. Should be added
@@ -133,8 +188,12 @@ def enlarge_field(field, coord, new_maximum, trying_to_extrapolate=False):
     enlarged_space = Space(field.space.elements)
     enlarged_space.elements[index] = np.append(enlarged_space.elements[index], np.linspace(edge_start, edge_end, 2 * number_of_points_on_each_edge))
 
-    enlarged_raw_field = [np.lib.pad(elem, ((0,0), (0,0), (number_of_points_on_each_edge, number_of_points_on_each_edge)), 'constant') for elem in self.elements]
-    enlarged_field = Field(enlarged_raw_field, enlarged_space)
+    edge_padding_shape = list(field.elements[0].shape)
+    edge_padding_shape[index] = number_of_points_on_each_edge
+    edge_padding = np.zeros(tuple(edge_padding_shape))
+    enlarged_raw_fields = [np.concatenate((edge_padding, elem, edge_padding), axis=index) for elem in field.elements]
+    #enlarged_raw_fields = [np.lib.pad(elem, ((0,0), (0,0), (number_of_points_on_each_edge, number_of_points_on_each_edge)), 'constant') for elem in field.elements]
+    enlarged_field = Field(enlarged_raw_fields, enlarged_space)
     enlarged_field.grab_namings(field)
 
     return enlarged_field
@@ -229,15 +288,15 @@ def integrate_field(raw_field, space):
     # To visualize it, imagine a sequence of projections (cube to square, square to line, line to point)
     # which are flattened into one-dimensional array
     dims = [space.elements[i].shape[0] for i in range(len(space.elements))] # [N0, N1, N2, N3, N4]
-    print('dims:')
-    print dims
+#    print('dims:')
+#    print dims
     flat_array_dims = [1] + [np.prod(dims[:i]) for i in range(1, len(dims))] # [1, N0, N0*N1, N0*N1*N2, N0*N1*N2*N3]
-    print('flat_array_dims:')
-    print flat_array_dims
+#    print('flat_array_dims:')
+#    print flat_array_dims
     flat_array = np.zeros((np.sum(flat_array_dims),))
     flat_array_offsets = np.array([np.sum(flat_array_dims[i:len(flat_array_dims)]) for i in range(1, len(flat_array_dims))] + [0]) # [N0 + N0*N1 + N0*N1*N2 + N0*N1*N2*N3, N0*N1 + N0*N1*N2 + N0*N1*N2*N3, N0*N1*N2 + N0*N1*N2*N3, N0*N1*N2*N3, 0]
-    print('flat_array_offsets:')
-    print flat_array_offsets
+#    print('flat_array_offsets:')
+#    print flat_array_offsets
 
     # NEED TO CREATE ARRAY OF INDEXES SHIFTS FOR EVERY DIMENSION
     # For dim_i = 4: [N1*N2*N3, N2*N3, N3, 1]
@@ -254,8 +313,8 @@ def integrate_field(raw_field, space):
         else:
             indexes_shifts.append(np.array([], np.int32))
 
-    print('indexes_shifts:')
-    print indexes_shifts
+#    print('indexes_shifts:')
+#    print indexes_shifts
 
     last_dim = len(raw_field.shape) - 1
 
@@ -284,38 +343,50 @@ def integrate_field(raw_field, space):
         if dim_i == last_dim: # last coordinate -- integrate along the last coordinate
             flat_array[flat_array_projection_offset + coord_offset] = np.trapz(raw_field[tuple(indexes_array + [slice(0, dim_N)])], space.elements[dim_i])
         else:
-            print('\n')
-            print(dim_i * '\t' + 'Looping dimension ' + str(dim_i))
-            print(dim_i * '\t' + 'indexes_array:')
-            print(dim_i * '\t' + str(indexes_array))
-            print(dim_i * '\t' + 'flat_array_projection_offset = ' + str(flat_array_projection_offset))
-            print(dim_i * '\t' + 'coord_offset = ' + str(coord_offset))
+#            print('\n')
+#            print(dim_i * '\t' + 'Looping dimension ' + str(dim_i))
+#            print(dim_i * '\t' + 'indexes_array:')
+#            print(dim_i * '\t' + str(indexes_array))
+#            print(dim_i * '\t' + 'flat_array_projection_offset = ' + str(flat_array_projection_offset))
+#            print(dim_i * '\t' + 'coord_offset = ' + str(coord_offset))
 
             for n in range(dim_N):
-                print(dim_i * '\t' + 'Go recursively to dimension ' + str(dim_i + 1) + ' with index_array ' + str(indexes_array + [n]) + ', projection offset ' + str(flat_array_offsets[dim_i + 1]) + ' and indexes shifts ' + str(indexes_shifts[dim_i + 1]))
+#                print(dim_i * '\t' + 'Go recursively to dimension ' + str(dim_i + 1) + ' with index_array ' + str(indexes_array + [n]) + ', projection offset ' + str(flat_array_offsets[dim_i + 1]) + ' and indexes shifts ' + str(indexes_shifts[dim_i + 1]))
                 recurs_integration(dim_i + 1, indexes_array + [n]) # jump to the next dimension and shift offset correspondingly
-                print(dim_i * '\t' + 'Integrate results from the higher dimension')
+#                print(dim_i * '\t' + 'Integrate results from the higher dimension')
 
             higher_dim_proj_offset = flat_array_offsets[dim_i + 1]
             higher_dim_coord_offset = np.dot(indexes_shifts[dim_i + 1][:-1], indexes_array) # essentially, higher_dim_coord_offset is an address of the first element of higher dim projection
             flat_array[flat_array_projection_offset + coord_offset] = \
                 np.trapz(flat_array[higher_dim_proj_offset + higher_dim_coord_offset : higher_dim_proj_offset + higher_dim_coord_offset + dim_N], space.elements[dim_i])
-#        for n in range(dim_N):
-#            if dim_i == pre_last_dim: # pre-last coordinate -- integrate along the last coordinate
-#                print(dim_i * '\t\t' + 'Pre-last dimension, so integrate along last dimension for n = ' + str(n))
-#                flat_array[flat_array_projection_offset + coord_offset + n] = np.trapz(raw_field[tuple(indexes_array + [n, slice(0, dim_N)])], space.elements[dim_i])
-#            else:
-#                print(dim_i * '\t\t' + 'Go recursively to the higher dimension')
-#                recurs_integration(dim_i + 1, indexes_array + [n]) # jump to the next dimension and shift offset correspondingly
-#                print(dim_i * '\t\t' + 'Integrate results from the higher dimension')
-#                higher_dim_proj_offset = flat_array_offsets[dim_i + 1]
-#                higher_dim_coord_offset = np.dot(indexes_shifts[dim_i + 1], indexes_array + [n])
-#                flat_array[flat_array_projection_offset + coord_offset + n] = \
-#                    np.trapz(flat_array[higher_dim_proj_offset + higher_dim_coord_offset : higher_dim_proj_offset + higher_dim_coord_offset + dims[dim_i + 1]])
 
     recurs_integration(0, [])
-    print flat_array
     return flat_array[-1]
+
+def find_likely_period(fields):
+    # Take the first field as a reference point. Compare in terms of second norms all subsequent fields to it
+    ref_field = fields[0][0]
+    ref_norm = np.sqrt(integrate_field(np.power(ref_field.u, 2), ref_field.space))
+    smallest_diff_time = 0
+    smallest_diff_norm = 0.
+    for i in range(1, len(fields)):
+        diff_norm = np.sqrt(integrate_field(np.power(ref_field.elements[0] - fields[i][0].elements[0], 2), fields[i][0].space))
+        #print('%ith time init: L2_diff = %f' % (i, val))
+        #val = np.sum(abs(fields[i][0].elements[0]))
+        print('%ith time init: percent of diff = %f' % (i, diff_norm / ref_norm * 100))
+        if diff_norm < smallest_diff_norm:
+            smallest_diff_norm = diff_norm
+            smallest_diff_time = i
+    return smallest_diff_time
+
+def ke(field):
+    return np.sum([norms(field, elem_name)**2 for elem_name in field.elements_names])
+
+def max_pointwise_ke(field):
+    ke_raw_field = np.zeros(field.elements[0].shape)
+    for raw_field in field.elements:
+        ke_raw_field += np.power(raw_field, 2)
+    return np.amax(ke_raw_field)
 
 def read_field(filename):
     f = h5py.File(filename, 'r')
@@ -338,7 +409,7 @@ def read_field(filename):
     field.set_uvw_naming()
     return field, dict(f.attrs)
 
-def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None):
+def read_fields(path, file_prefix='u', file_postfix='.h5', start_time = 0, end_time = None):
     files_list = os.listdir(path)
     found_files = []
     if end_time is None:
@@ -357,15 +428,19 @@ def read_fields(path, file_prefix, file_postfix, start_time = 0, end_time = None
                 found_files.append(match.string)
 
     end_time = max_time_found
+    if end_time == 0: # nothing is found
+        return [], []
     if checker != []:
         if checker.index(end_time + 1) != 0:
             raise BadFilesOrder('Time order based on files is broken. Probably, some of the files are missed')
 
     fields = []
+    attrs = []
     for t in range(start_time, end_time + 1):
-        fields.append(read_field(path + '/' + file_prefix + str(t) + file_postfix))
-    
-    return fields
+        field, attr = read_field(path + '/' + file_prefix + str(t) + file_postfix)
+        fields.append(field)
+        attrs.append(attr)
+    return fields, attrs
 
 def write_field(field, attrs, filename):
     f = h5py.File(filename, 'w')
@@ -375,7 +450,7 @@ def write_field(field, attrs, filename):
         
     data = f.create_group('data')
     geom = f.create_group('geom')
-    data['u'] = np.stack(tuple(field.elements), axis=0)
+    data['u'] = np.stack(tuple(elem[:,::-1,:] for elem in field.elements), axis=0)
     for i in range(len(field.space.elements_names)):
         # Dirty hack -- the y-coordinate is to be inverted in chflow, so invert it here
         if field.space.elements_names[i] == 'y':
@@ -384,6 +459,29 @@ def write_field(field, attrs, filename):
             geom[field.space.elements_names[i]] = field.space.elements[i]
 
     f.close()
+
+def call_by_portions(path, func, start_time=0, end_time=None, portion_size=100):
+    '''
+    func should take a field
+
+    '''
+    results = []
+    stop = False
+    while not stop:
+        print('Processing {} to {}...'.format(start_time, start_time + portion_size - 1))
+        fields, attrs = read_fields(path, start_time=start_time, end_time=start_time + portion_size - 1)
+        for field_ in fields:
+            results.append(func(field_))
+        start_time += portion_size
+        if end_time is not None:
+            if start_time >= end_time:
+                stop = True
+            elif end_time - start_time < portion_size:
+                portion_size = end_time - start_time
+        elif len(fields) < portion_size:
+            stop = True
+
+    return results
 
 class BadFilesOrder(Exception):
     pass
