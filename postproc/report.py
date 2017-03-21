@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from datetime import *
 import os
 import os.path
+import shutil
 
 class QuickReport:
     '''
@@ -33,6 +34,9 @@ class QuickReport:
 
     TEX_FILE_FOOTER = '\end{document}'
 
+    REPORTS_ROOT = os.path.join('.', 'doc')
+
+
     def __init__(self, title):
         self.title = title
         self.blocks = []
@@ -43,7 +47,7 @@ class QuickReport:
     def add_comment(self, comment):
         self.blocks.append(comment)
 
-    def add_plot(self, fig, axes, caption, comment):
+    def add_plot(self, fig, axes, caption, comment = ''):
         if not os.path.exists('./doc'):
             os.mkdir('./doc')
             if not os.path.exists('./doc/images'):
@@ -54,20 +58,27 @@ class QuickReport:
         block_pic_path = './doc/images/' + block_pic_filename
         block_pic_latex_path = 'images/' + block_pic_filename
         figure_label = 'fig:' + str(block_number)
+        fig.tight_layout()
         fig.savefig(block_pic_path)
         plt.clf()
         block_content = comment.replace('\\ref{@this@}', '\\ref{' + figure_label + '}') + '\n'
         block_content += '\\begin{figure}[H]\n'
-        block_content += '\includegraphics[width=' + str(fig.get_figwidth()/10.) + '\\textwidth, center]{' + block_pic_latex_path + '}\n'
+        block_content += '\includegraphics[width=' + str(fig.get_figwidth()/7.) + '\\textwidth, center]{' + block_pic_latex_path + '}\n'
         block_content += '\caption{' + caption + '.}\label{' + figure_label + '}\n\end{figure}\n'
 
         self.blocks.append(block_content)
 
     def print_out(self):
-        if not os.path.exists('./doc'):
-            os.mkdir('./doc')
+        if not os.path.exists(REPORTS_ROOT):
+            os.mkdir(REPORTS_ROOT)
 
-        texfile = open('./doc/quick_report_' + str(date.today()) + '.tex', 'w')
+        report_name = str(date.today()) + '_' + '_'.join(self.title.split())
+        report_dir = os.path.join(REPORTS_ROOT, report_name)
+        if os.path.exists(report_dir):
+            shutil.rmtree(report_dir)
+            os.mkdir(os.path.join(REPORTS_ROOT, report_name))
+
+        texfile = open(os.path.join('.', 'doc, 'report_name, report_name + '.tex'), 'w')
         texfile.write(QuickReport.TEX_FILE_HEADER)
         texfile.write('\\title{' + self.title + '}\n')
         texfile.write('''\\begin{document}
