@@ -41,10 +41,21 @@ class BaseQuickAnimation(anim.TimedAnimation):
         time = framedata
         axes = self._fig.get_axes()
         for c in range(len(self._contours)):
+            # To update colorbar the following dirty hack is used.
+            # We use method Colorbar.update_bruteforce which clears an axis,
+            # so 
+            # Yes, this is ugly, have to deal with it until we create contour_set only once and then update it for each frame
+            # instead of creating contour_set for each frame via contourf
+            #self._fig.clf()
+            #axes[c].cla()
             contours_data = self._contours[c]
             x, y = np.meshgrid(contours_data.coords[0], contours_data.coords[1], indexing='ij')
-            axes[c].contourf(x, y, contours_data.fields[time], 50)
+            contour_set = axes[c].contourf(x, y, contours_data.fields[time], 50)
             axes[c].set_title(contours_data.title + ', T = ' + str(time))
+            if contours_data.colorbar is None:
+                contours_data.colorbar = self._fig.colorbar(contour_set, ax=axes[c])
+            else:
+                contours_data.colorbar.update_bruteforce(contour_set)
 
         for q in range(len(self._quivers)):
             #self._quivers[q].quiver_raw_data.set_UVC(self._quivers[q].u_fields[time], self._quivers[q].v_fields[time])
@@ -189,6 +200,7 @@ class ScalarFieldAnimationData:
         self.title = title
         self.x_label = x_label
         self.y_label = y_label
+        self.colorbar = None
 
 class QuiverAnimationData:
     def __init__(self, u_fields_2d, v_fields_2d, x, y, title, x_label, y_label):
